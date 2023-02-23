@@ -4,11 +4,11 @@ description: Vendor-agnostic way to receive, process and export telemetry data.
 spelling: cSpell:ignore Otel
 aliases: [/docs/collector/about]
 cascade:
-  collectorVersion: 0.71.0
+  collectorVersion: 0.72.0
 weight: 10
 ---
 
-![OpenTelemetry Collector diagram with Jaeger, OTLP and Prometheus integration](https://raw.githubusercontent.com/open-telemetry/opentelemetry.io/main/iconography/Otel_Collector.svg)
+![OpenTelemetry Collector diagram with Jaeger, OTLP and Prometheus integration](img/otel-collector.svg)
 
 ## Introduction
 
