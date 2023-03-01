@@ -208,3 +208,80 @@ try (Scope unused = span.makeCurrent()) {
 
 ### 进程内
 
+- 确保你的跨度处于活动状态（又称当前状态）：它使跨度与日志和任何嵌套的自动仪表(auto-instrumentations)相关联。
+- 如果库具有上下文的概念，请除了活动跨度之外，支持可选的显式跟踪上下文传播
+
+  - 将库创建的跨度（跟踪上下文）明确地放入上下文中，并记录如何访问它。
+  - 允许用户在你的上下文中传递追踪上下文
+- 在库中，明确地传播追踪上下文--活动跨度在回调过程中可能会发生变化!
+  - 尽快从公共 API 表面的用户那里捕获活动上下文，将其作为你的跨度的父级上下文。
+  - 传递上下文，在明确传播的实例上标记属性、异常和事件
+  - 如果你明确地启动线程，做后台处理或进行其他由于语言中的异步上下文流限制而可能中断的操作，这是很有必要的。
+
+## 度量
+
+目前[度量 API](https://opentelemetry.io/docs/reference/specification/metrics/api/) 还不稳定，我们还没有定义度量规约。
+
+## 杂项
+
+### 仪表注册表
+
+请将您的仪表库添加到 [OpenTelemetry 注册表](https://opentelemetry.io/ecosystem/registry/)中，以便用户可以找到它。
+
+### 性能
+
+当应用程序中没有 SDK 时，OpenTelemetry API 是无操作的，性能非常好。配置 OpenTelemetry SDK 时，会消耗[绑定资源](https://opentelemetry.io/docs/reference/specification/performance/)。
+
+现实中的应用，特别是高规模的应用程序，会经常配置基于头部(head-based)的采样(sampling)。采样的跨度很便宜，你可以检查跨度是否在记录，以避免额外的分配和潜在的昂贵计算，同时填充属性。
+
+```java
+// some attributes are important for sampling, they should be provided at creation time
+Span span = tracer.spanBuilder(String.format("SELECT %s.%s", dbName, collectionName))
+        .setSpanKind(SpanKind.CLIENT)
+        .setAttribute("db.name", dbName)
+        ...
+        .startSpan();
+
+// other attributes, especially those that are expensive to calculate
+// should be added if span is recording
+if (span.isRecording()) {
+    span.setAttribute("db.statement", sanitize(query.statement()))
+}
+```
+
+### 错误处理
+
+OpenTelemetry API [在运行时是宽松的](https://opentelemetry.io/docs/reference/specification/error-handling/#basic-error-handling-principles)——不会在无效参数上失败，从不抛出异常，并吞咽异常。这样，仪表问题就不会影响应用程序逻辑。测试仪表以注意 OpenTelemetry 在运行时隐藏的问题。
+
+### 测试
+
+由于 OpenTelemetry 具有多种自动仪表化功能，因此尝试了解您的仪器化如何与其他遥测交互是很有用的：包括入站请求、出站请求、日志等。在尝试您的仪器化时，请使用典型的应用程序，使用流行的框架和库以及启用所有追踪。检查类似于您的库的表现如何。
+
+对于单元测试，您通常可以模拟或伪造 `SpanProcessor` 和 `SpanExporter`。
+
+```java
+@Test
+public void checkInstrumentation() {
+  SpanExporter exporter = new TestExporter();
+
+  Tracer tracer = OpenTelemetrySdk.builder()
+           .setTracerProvider(SdkTracerProvider.builder()
+              .addSpanProcessor(SimpleSpanProcessor.create(exporter)).build()).build()
+           .getTracer("test");
+  // run test ...
+
+  validateSpans(exporter.exportedSpans);
+}
+
+class TestExporter implements SpanExporter {
+  public final List<SpanData> exportedSpans = Collections.synchronizedList(new ArrayList<>());
+
+  @Override
+  public CompletableResultCode export(Collection<SpanData> spans) {
+    exportedSpans.addAll(spans);
+    return CompletableResultCode.ofSuccess();
+  }
+  ...
+}
+```
+
